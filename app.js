@@ -17,8 +17,12 @@ const ui = {
 const val = (k) => ui.f[k] ?? '';
 const commit = () => { store.save(S); render(); };
 const say = (m, ok = false) => { ui.msg = m ? { m, ok } : null; };
-const ctx = () => L.makeCtx(S, today(), { wishes: ui.wishes, relax: ui.relax });
-const recipe = (id) => S.recipes.find((r) => r.id === id);
+let downloaded = [];
+// vlastní recepty (i upravené stažené) mají přednost před staženými se stejným id
+const allRecipes = () => [...S.recipes, ...downloaded.filter((d) => !S.recipes.some((r) => r.id === d.id))];
+const view = () => ({ ...S, recipes: allRecipes() });
+const ctx = () => L.makeCtx(view(), today(), { wishes: ui.wishes, relax: ui.relax });
+const recipe = (id) => allRecipes().find((r) => r.id === id);
 const mealOrder = (m) => MEALS.indexOf(m);
 
 // ---------- hlas ----------
@@ -88,7 +92,7 @@ function viewSugg() {
   const c = ctx();
   if (!ui.sugg.length) {
     return `<div class="banner">Nic nevyhovuje. Vyřazeno kvůli: ${esc(L.why(c, ui.meal))}.</div>
-      ${S.recipes.length ? `<button class="btn ghost" data-act="relax">Uvolnit pauzu na 3 dny a zkusit znovu</button>` : '<p class="note">Sbírka je prázdná. Přidejte první recept v záložce Recepty.</p>'}`;
+      ${allRecipes().length ? `<button class="btn ghost" data-act="relax">Uvolnit pauzu na 3 dny a zkusit znovu</button>` : '<p class="note">Sbírka je prázdná. Přidejte první recept v záložce Recepty.</p>'}`;
   }
   return `<h2>Návrhy: ${esc(ui.meal)}</h2>${ui.relax ? '<p class="note">Pauza dočasně uvolněna na 3 dny.</p>' : ''}` + ui.sugg.map((r) => `
     <button class="card" data-act="open" data-id="${r.id}"><b>${esc(r.name)}</b><div class="meta">${esc(r.time || '')} · ${esc(r.source || 'vlastní')}</div>
@@ -112,7 +116,8 @@ function viewDetail() {
   if (!r) { ui.detail = null; return viewDnes(); }
   const base = r.servings || 4, p = ui.portions || L.householdSize(S.settings);
   return `<button class="back" data-act="back">‹ Zpět</button>
-  <h1>${esc(r.name)}</h1><p class="meta">${esc(r.kind)} · ${esc(r.time || 'čas neuveden')} · zdroj: ${esc(r.source || 'vlastní')}</p>
+  <h1>${esc(r.name)}</h1><p class="meta">${esc((r.kinds || [r.kind]).join(', ') || 'druh neurčen')} · ${esc(r.time || 'čas neuveden')} · zdroj: ${esc(r.source || 'vlastní')}</p>
+  <p><span class="tag ${r.origin === 'stazeno' ? 'warm' : ''}">${r.origin === 'stazeno' ? 'stažený' : 'vlastní'}</span>${r.url ? ` <a href="${esc(r.url)}" target="_blank" rel="noopener noreferrer">Otevřít původní recept ↗</a>` : ''}</p>
   <h2>Ingredience pro ${p} ${p === 1 ? 'osobu' : p < 5 ? 'osoby' : 'osob'}</h2>
   <div class="row2"><button class="btn ghost" data-act="portions" data-d="-1">− porce</button><button class="btn ghost" data-act="portions" data-d="1">+ porce</button></div>
   ${r.ingredients.map((i) => `<div class="row"><span>${esc(i.name)}</span><span>${esc(i.qty ? L.scaleQty(i.qty, base, p) : '')}</span></div>`).join('')}
@@ -122,8 +127,8 @@ function viewDetail() {
   <button class="btn" data-act="cookNow" data-id="${r.id}">Vařím teď (${esc(ui.meal)})</button>
   <label>Naplánovat na <select data-bind="planDay">${[0, 1, 2, 3, 4].map((n) => `<option value="${n}" ${String(val('planDay') || 1) === String(n) ? 'selected' : ''}>${esc(L.dayLabel(L.addDays(today(), n), today()))}</option>`).join('')}</select></label>
   <button class="btn ghost" data-act="planOne" data-id="${r.id}">Naplánovat jako ${esc(ui.meal)}</button>
-  <button class="btn ghost" data-act="edit" data-id="${r.id}">Upravit recept</button>
-  <button class="btn danger" data-act="recipeDel" data-id="${r.id}">Smazat recept</button>`;
+  <button class="btn ghost" data-act="edit" data-id="${r.id}">${r.origin === 'stazeno' ? 'Upravit (stane se vlastním)' : 'Upravit recept'}</button>
+  ${r.origin === 'stazeno' ? '' : `<button class="btn danger" data-act="recipeDel" data-id="${r.id}">Smazat recept</button>`}`;
 }
 
 function viewHistorie() {
@@ -131,7 +136,7 @@ function viewHistorie() {
   const rows = L.historyView(S, t, 5);
   const gaps = L.historyGaps(S, t);
   const hq = val('hq');
-  const found = hq ? L.searchRecipes(S, hq) : [];
+  const found = hq ? L.searchRecipes(view(), hq) : [];
   const foundMeals = hq ? S.meals.filter((m) => m.status === 'cooked' && L.norm(m.name).includes(L.norm(hq))) : [];
   return `<h1>Historie</h1>
   ${gaps.length ? `<div class="banner">Chybí záznamy: ${gaps.map((g) => `${esc(L.dayLabel(g.day, t))} (${esc(g.meal)})`).join(', ')}.</div>` : ''}
@@ -178,17 +183,17 @@ function viewNakup() {
 function viewRecepty() {
   if (ui.draft) return viewDraft();
   const q = val('rq');
-  const list = L.searchRecipes(S, q);
+  const list = L.searchRecipes(view(), q);
   return `<h1>Recepty</h1>
   <p class="note">Aplikace žádné recepty nevymýšlí. Sbírka obsahuje jen to, co sem sami nadiktujete a potvrdíte.</p>
   <h2>Přidat recept diktátem</h2>
   <p class="note">Řekněte název, druh jídla (oběd, večeře, svačina, koláč), čas, „potřebujeme …“ a postup po větách.</p>
   ${field('recDict', 'Nadiktujte nebo napište celý recept', true)}
   <button class="btn" data-act="recSplit">Rozdělit na položky</button>
-  <h2>Sbírka (${S.recipes.length})</h2>
+  <h2>Sbírka (${allRecipes().length}, z toho stažených ${downloaded.length})</h2>
   ${field('rq', 'hledat název nebo surovinu')}
   <button class="btn ghost" data-act="rerender">Hledat</button>
-  ${list.map((r) => `<button class="card" data-act="open" data-id="${r.id}"><b>${esc(r.name)}</b><div class="meta">${esc(r.kind)} · ${esc(r.time || '')} · ${esc(r.source || 'vlastní')}</div></button>`).join('') || '<p class="note">Zatím žádný recept.</p>'}
+  ${list.map((r) => `<button class="card" data-act="open" data-id="${r.id}"><b>${esc(r.name)}</b><div class="meta">${esc((r.kinds || [r.kind]).join(', ') || 'druh neurčen')} · ${esc(r.time || '')} · ${r.origin === 'stazeno' ? 'stažený' : 'vlastní'}, ${esc(r.source || '')}</div></button>`).join('') || '<p class="note">Zatím žádný recept.</p>'}
   <h2>Zdroje</h2>
   <p class="note">Webové zdroje se v první verzi nestahují. Seznam určuje, co se smí do sbírky přidat.</p>
   ${S.sources.map((s, i) => `<div class="row"><div>${esc(s.name)}<br><span class="tag ${s.status === 'ok' ? '' : 'warm'}">${s.status === 'ok' ? 'schváleno' : s.status === 'banned' ? 'zakázáno' : 'čeká na schválení'}</span></div>
@@ -265,7 +270,7 @@ const mealEntry = (day, meal, r, name, status) => ({ id: uid(), day, meal, recip
 
 function toDraft(p, base = {}) {
   return { id: base.id || null, name: p.name, kind: p.kind, time: p.time, servings: base.servings || 4,
-    ing: p.ingredients.map((i) => (i.qty ? `${i.name} | ${i.qty}` : i.name)).join('\n'), steps: p.steps.join('\n'),
+    ing: p.ingredients.map((i) => (i.qty ? `${i.name} | ${i.qty}` : i.name)).join('\n'), steps: p.steps.join('\n'), url: base.fromUrl || '', fresh: Object.fromEntries(p.ingredients.map((i) => [i.name, i.fresh])),
     source: base.source || 'Vlastní recept', note: base.note || '', tags: base.tags || [] };
 }
 
@@ -306,7 +311,7 @@ const actions = {
     const name = val('hName').trim();
     if (!name) { say('Napište, co se jedlo.'); return render(); }
     const day = L.addDays(today(), +(val('hDay') || -1)), meal = val('hMeal') || 'oběd';
-    const r = S.recipes.find((x) => L.norm(x.name) === L.norm(name));
+    const r = allRecipes().find((x) => L.norm(x.name) === L.norm(name));
     S.meals = S.meals.filter((m) => !(m.day === day && m.meal === meal && m.status === 'cooked' && L.norm(m.name) === L.norm(name)));
     S.meals.push(mealEntry(day, meal, r, name, 'cooked'));
     ui.f.hName = ''; say('Zapsáno.', true); commit();
@@ -320,17 +325,17 @@ const actions = {
     if (!t) { say('Nejdřív recept nadiktujte nebo napište.'); return render(); }
     ui.draft = toDraft(L.parseRecipeDictation(t)); say(null); render(); window.scrollTo(0, 0);
   },
-  edit: (e) => { const r = recipe(e.id); ui.draft = toDraft({ name: r.name, kind: r.kind, time: r.time, ingredients: r.ingredients, steps: r.steps }, r); ui.detail = null; ui.tab = 'recepty'; render(); },
+  edit: (e) => { const r = recipe(e.id); ui.draft = toDraft({ name: r.name, kind: (r.kinds && r.kinds[0]) || r.kind || 'večeře', time: r.time, ingredients: r.ingredients, steps: r.steps }, { ...r, source: r.origin === 'stazeno' ? `${r.source} (upraveno)` : r.source, fromUrl: r.url }); ui.detail = null; ui.tab = 'recepty'; render(); },
   draftCancel: () => { ui.draft = null; render(); },
   draftSave: () => {
     const d = ui.draft;
-    const ingredients = d.ing.split('\n').map((l) => l.trim()).filter(Boolean).map((l) => { const [n, q] = l.split('|'); return { name: n.trim().toLowerCase(), qty: (q || '').trim() }; });
+    const ingredients = d.ing.split('\n').map((l) => l.trim()).filter(Boolean).map((l) => { const [n, q] = l.split('|'); const name = n.trim().toLowerCase(); return { name, qty: (q || '').trim(), fresh: d.fresh?.[name] ?? null }; });
     const steps = d.steps.split('\n').map((l) => l.trim()).filter(Boolean);
     if (!d.name.trim() || !ingredients.length) { say('Recept potřebuje název a aspoň jednu ingredienci.'); return render(); }
     if (L.isBannedSource(d.name, d.source, d.note, d.ing, d.steps)) { say('Tento zdroj je na černé listině. Recept se neuloží.'); return render(); }
     const src = S.sources.find((s) => L.norm(s.name) === L.norm(d.source));
     if (src && src.status !== 'ok') { say('Zdroj není schválený.'); return render(); }
-    const rec = { id: d.id || uid(), name: d.name.trim(), kind: d.kind, time: d.time.trim(), servings: Math.max(1, +d.servings || 4), ingredients, steps, tags: d.tags, source: d.source.trim() || 'Vlastní recept', note: d.note.trim() };
+    const rec = { id: d.id || uid(), name: d.name.trim(), kind: d.kind, time: d.time.trim(), servings: Math.max(1, +d.servings || 4), ingredients, steps, tags: d.tags, source: d.source.trim() || 'Vlastní recept', note: d.note.trim(), origin: 'vlastni', ...(d.url ? { url: d.url } : {}) };
     const i = S.recipes.findIndex((r) => r.id === rec.id);
     if (i >= 0) S.recipes[i] = rec; else S.recipes.push(rec);
     ui.draft = null; ui.f.recDict = ''; say('Recept uložen do sbírky.', true); commit();
@@ -396,6 +401,10 @@ document.addEventListener('visibilitychange', async () => {
 
 // ---------- start ----------
 (async () => {
+  try {
+    const r = await fetch('recepty-stazene.json', { cache: 'no-cache' });
+    if (r.ok) downloaded = ((await r.json()).recipes || []).filter((x) => !L.isBannedSource(x.source, x.name, x.url));
+  } catch { /* soubor se stažených receptů zatím není */ }
   render();
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
   if (CONFIG.supabaseUrl) {

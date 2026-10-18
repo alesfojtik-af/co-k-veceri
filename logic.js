@@ -110,11 +110,14 @@ export function lastUse(recipeId, meals, today) {
 
 export function missing(r, pantry, extraStaples = []) {
   const have = new Set([...pantry, ...STAPLES, ...extraStaples].map(norm));
-  return r.ingredients.filter((i) => !have.has(norm(i.name))).map((i) => i.name);
+  // trvanlivé suroviny (fresh === false) se nehlídají; vlastní recepty a nejisté položky ano
+  return r.ingredients.filter((i) => i.fresh !== false && !have.has(norm(i.name))).map((i) => i.name);
 }
 
 export function kindOK(r, meal) {
-  return meal === 'oběd' || meal === 'večeře' ? ['hlavní', 'oběd', 'večeře'].includes(r.kind) : r.kind === meal;
+  // stažené recepty mají víc druhů (kinds); bez určeného druhu se nenavrhují
+  const kinds = r.kinds || [r.kind];
+  return meal === 'oběd' || meal === 'večeře' ? kinds.some((k) => ['hlavní', meal].includes(k)) : kinds.includes(meal);
 }
 
 export function makeCtx(state, today, opts = {}) {

@@ -1,0 +1,7 @@
+[
+  { "name": "Fitrecepty", "base": "https://www.fitrecepty.cz" },
+  { "name": "Zásadně zdravě (Jana Králíková)", "base": "https://www.zasadnezdrave.cz" },
+  { "name": "Děvče u plotny", "base": "https://www.devceuplotny.cz" },
+  { "name": "Vařím a peču s láskou", "base": "https://www.varimapecuslaskou.cz" },
+  { "name": "Biokuchařka Hanky Zemanové", "base": "https://www.biokucharka.cz" }
+]

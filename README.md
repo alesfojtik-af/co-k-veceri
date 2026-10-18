@@ -25,3 +25,6 @@ Pozn.: všechna data domácnosti jsou jeden dokument, poslední uložení vyhrá
 
 ## Vývoj
 `node --test tests/logic.test.mjs` spustí testy logiky. Lokálně: `python3 -m http.server`.
+
+## Stažené recepty
+`node scripts/scrape.mjs --per-site 5` (Node 18+, bez závislostí) projde zdroje ze `scripts/sources.json`, přečte strukturovaná data receptu (schema.org JSON-LD), respektuje `robots.txt`, čeká 2 s mezi dotazy a zapíše `recepty-stazene.json` + `recepty-stazene-report.json` (co se povedlo, co ne). Aplikace soubor sama načte; recepty jsou označené „stažený“ s odkazem na původní stránku. Po úpravě se recept uloží jako „vlastní“. Druh jídla se bere jen z kategorií webu; bez kategorie se recept nenavrhuje. Čerstvost surovin určují pravidla v `scripts/lib.mjs`, nejisté jsou označené `null` a počítají se jako nutné mít doma.
